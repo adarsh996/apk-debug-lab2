@@ -1,0 +1,43 @@
+name: Build APK
+on:
+  push:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Locate project
+        run: |
+          if [ -f project.zip ]; then
+            mkdir -p proj && unzip -q -o project.zip -d proj
+            echo "PROJ=proj" >> "$GITHUB_ENV"
+          else
+            echo "PROJ=." >> "$GITHUB_ENV"
+          fi
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Create signing key used for edited APKs
+        working-directory: ${{ env.PROJ }}
+        run: |
+          mkdir -p app/src/main/assets
+          if [ ! -f app/src/main/assets/debug.keystore ]; then
+            keytool -genkeypair -keystore app/src/main/assets/debug.keystore -storetype PKCS12 \
+              -storepass android -keypass android -alias edited -keyalg RSA -keysize 2048 \
+              -validity 10000 -dname "CN=APK Debug Lab"
+          fi
+      - name: Build
+        working-directory: ${{ env.PROJ }}
+        run: gradle assembleDebug --no-daemon --stacktrace
+      - name: Report APK size
+        run: ls -lh "${{ env.PROJ }}/app/build/outputs/apk/debug/app-debug.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apk-debug-lab
+          path: ${{ env.PROJ }}/app/build/outputs/apk/debug/app-debug.apk
+          
